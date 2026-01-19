@@ -128,7 +128,13 @@
     font-size: 12px;
 }
 
-.month-view-today, .month-view-special-date {
+.month-view-today {
+    color: var(--text-accent);
+    border: 1px solid var(--text-accent);
+    border-radius: 4px;
+}
+
+.month-view-special-date {
     color: var(--text-accent);
 }
 
@@ -180,4 +186,14 @@
     line-height: 1.5em;
     text-align: center;
     border-radius: 50%;
+}
+
+.month-view-week-index-item {
+    color: var(--text-muted);
+}
+
+.month-view-week-index-item, .month-view-week-header {
+    border-right: 1px solid var(--background-modifier-border);
+    padding-right: 4px;
+    margin-right: 4px;
 }
