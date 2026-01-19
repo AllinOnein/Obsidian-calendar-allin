@@ -9,6 +9,7 @@ import ViewController from "./core/ViewController";
 import NoteStatisticController from "./core/NoteStatisticController";
 import {CalendarViewController} from "./core/CalendarViewController";
 import {NoteType} from "./base/enum";
+import {ChineseHolidayUtil} from "./utils/ChineseHolidayUtil";
 
 
 // 插件对象
@@ -39,6 +40,11 @@ export default class DustCalendarPlugin extends Plugin {
         await this.database.loadSetting();
         this.templateController.updateTemplatePlugin(this.database.setting.templatePlugin);
         this.viewController.setQuarterNameMode(this.database.setting.quarterNameMode);
+
+        // 加载自定义调休数据
+        if (this.database.setting.holidayData) {
+            ChineseHolidayUtil.setHolidayData(this.database.setting.holidayData);
+        }
 
         // 注册日历视图
         this.registerView(VIEW_TYPE_CALENDAR, (leaf) => new CalendarView(leaf, this));
