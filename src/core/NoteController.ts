@@ -1,4 +1,4 @@
-import {MarkdownView, TAbstractFile, TFile, WorkspaceLeaf} from "obsidian";
+import {MarkdownView, TAbstractFile, TFile, TFolder, WorkspaceLeaf} from "obsidian";
 import {DateTime} from "luxon";
 import {NoteType, SelectedItemType} from "../base/enum";
 import SelectedItem from "../entity/SelectedItem";
@@ -120,6 +120,45 @@ export default class NoteController {
         this.plugin.database.setting.shouldConfirmBeforeCreatingNote = shouldConfirmBeforeCreatingNote;
     }
 
+    public getNoteSearchFolder(noteType: NoteType): string {
+        const {setting} = this.plugin.database;
+        if (noteType === NoteType.DAILY) {
+            return setting.dailyNoteSearchFolder;
+        }
+        else if (noteType === NoteType.WEEKLY) {
+            return setting.weeklyNoteSearchFolder;
+        }
+        else if (noteType === NoteType.MONTHLY) {
+            return setting.monthlyNoteSearchFolder;
+        }
+        else if (noteType === NoteType.QUARTERLY) {
+            return setting.quarterlyNoteSearchFolder;
+        }
+        else if (noteType === NoteType.YEARLY) {
+            return setting.yearlyNoteSearchFolder;
+        }
+        return "";
+    }
+
+    public setNoteSearchFolder(noteType: NoteType, folder: string): void {
+        const {setting} = this.plugin.database;
+        if (noteType === NoteType.DAILY) {
+            setting.dailyNoteSearchFolder = folder;
+        }
+        else if (noteType === NoteType.WEEKLY) {
+            setting.weeklyNoteSearchFolder = folder;
+        }
+        else if (noteType === NoteType.MONTHLY) {
+            setting.monthlyNoteSearchFolder = folder;
+        }
+        else if (noteType === NoteType.QUARTERLY) {
+            setting.quarterlyNoteSearchFolder = folder;
+        }
+        else if (noteType === NoteType.YEARLY) {
+            setting.yearlyNoteSearchFolder = folder;
+        }
+    }
+
     public getNotePatternPlaceHolder(noteType: NoteType): string {
 
         if (noteType === NoteType.DAILY) {
@@ -142,7 +181,7 @@ export default class NoteController {
     }
 
     public hasNote(date: DateTime, noteType: NoteType): boolean {
-        const noteFilename = this.getNoteFilename(date, noteType);
+        const noteFilename = this.getExistingNoteFilename(date, noteType);
         if (noteFilename === null) {
             return false;
         }
@@ -150,12 +189,86 @@ export default class NoteController {
         return abstractFile instanceof TFile;
     }
 
+    private getTargetDate(date: DateTime, noteType: NoteType): DateTime {
+        if (noteType === NoteType.WEEKLY) {
+            return date.set({weekday: 4});
+        }
+        return date;
+    }
+
+    private getNoteBasename(date: DateTime, noteType: NoteType): string | null {
+        const notePattern: string | null = this.getNotePattern(noteType);
+        if (notePattern.length === 0) {
+            return null;
+        }
+        const index = notePattern.lastIndexOf("/");
+        let basenamePattern = notePattern;
+        if (index !== -1 && index + 1 < notePattern.length) {
+            basenamePattern = notePattern.substring(index + 1);
+        }
+        const targetDate = this.getTargetDate(date, noteType);
+        return targetDate.setLocale(navigator.language).toFormat(basenamePattern).concat(".md");
+    }
+
     public getNoteFilename(date: DateTime, noteType: NoteType): string | null {
         const notePattern: string | null = this.getNotePattern(noteType);
         if (notePattern.length === 0) {
             return null;
         }
-        return date.setLocale(navigator.language).toFormat(notePattern).concat(".md");
+        const targetDate = this.getTargetDate(date, noteType);
+        return targetDate.setLocale(navigator.language).toFormat(notePattern).concat(".md");
+    }
+
+    public getExistingNoteFilename(date: DateTime, noteType: NoteType): string | null {
+        const searchFolder = this.getNoteSearchFolder(noteType);
+        const targetDate = this.getTargetDate(date, noteType);
+        if (searchFolder.length === 0) {
+            return this.getNoteFilename(targetDate, noteType);
+        }
+        const basename = this.getNoteBasename(targetDate, noteType);
+        if (basename === null) {
+            return null;
+        }
+        const file = this.findFileInFolderByBasename(searchFolder, basename);
+        if (file === null) {
+            return null;
+        }
+        return file.path;
+    }
+
+    private findFileInFolderByBasename(folderPath: string, basename: string): TFile | null {
+        const {vault} = this.plugin.app;
+        const abstractFile = vault.getAbstractFileByPath(folderPath);
+        if (abstractFile === null) {
+            return null;
+        }
+        if (abstractFile instanceof TFile) {
+            if (abstractFile.name === basename) {
+                return abstractFile;
+            }
+            return null;
+        }
+        if (abstractFile instanceof TFolder) {
+            return this.findFileInFolderByBasenameImpl(abstractFile, basename);
+        }
+        return null;
+    }
+
+    private findFileInFolderByBasenameImpl(folder: TFolder, basename: string): TFile | null {
+        for (const child of folder.children) {
+            if (child instanceof TFile) {
+                if (child.name === basename) {
+                    return child;
+                }
+            }
+            else if (child instanceof TFolder) {
+                const result = this.findFileInFolderByBasenameImpl(child, basename);
+                if (result !== null) {
+                    return result;
+                }
+            }
+        }
+        return null;
     }
 
     public openNoteBySelectedItem(selectedItem: SelectedItem): void {
@@ -177,7 +290,10 @@ export default class NoteController {
     }
 
     public openNoteByNoteType(date: DateTime, noteType: NoteType): void {
-        const noteFilename = this.getNoteFilename(date, noteType);
+        let noteFilename = this.getExistingNoteFilename(date, noteType);
+        if (noteFilename === null) {
+            noteFilename = this.getNoteFilename(date, noteType);
+        }
         if (noteFilename === null) {
             return;
         }
@@ -205,13 +321,13 @@ export default class NoteController {
 
     public async createNote(filename: Path): Promise<void> {
         const abstractFile: TAbstractFile = await PathUtil.create(filename, this.plugin.app.vault);
-        this.openNoteTabView(abstractFile as TFile);
+        await this.openNoteTabView(abstractFile as TFile);
         this.plugin.templateController.insertTemplate(this.noteType);
         // 新建文件之后，需要更新统计信息
         this.plugin.noteStatisticController.addTaskByFile(abstractFile);
     }
 
-    private openNoteTabView(tFile: TFile): void {
+    private async openNoteTabView(tFile: TFile): Promise<void> {
         // 寻找已打开的标签页
         let targetView: MarkdownView | null = null;
         app.workspace.iterateRootLeaves(leaf => {
@@ -226,8 +342,7 @@ export default class NoteController {
         if (targetView === null) {
             targetView = new MarkdownView(app.workspace.getLeaf("tab"));
             const targetLeaf: WorkspaceLeaf = targetView.leaf;
-            targetLeaf.openFile(tFile).then(() => {
-            });
+            await targetLeaf.openFile(tFile);
         }
         app.workspace.revealLeaf(targetView.leaf);
         // 移动焦点到笔记编辑区域
@@ -235,4 +350,3 @@ export default class NoteController {
     }
 
 }
-

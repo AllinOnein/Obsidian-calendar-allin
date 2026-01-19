@@ -47,7 +47,7 @@ export default class NoteStatisticController {
     }
 
     public getNoteStatic(date: DateTime, noteType: NoteType): NoteStatistic {
-        const filename = this.plugin.noteController.getNoteFilename(date, noteType);
+        const filename = this.plugin.noteController.getExistingNoteFilename(date, noteType);
         if (filename === null) {
             return new NoteStatistic();
         }
@@ -73,7 +73,7 @@ export default class NoteStatisticController {
     }
 
     private async executeStaticByDateAndNoteType(date: DateTime, noteType: NoteType): Promise<void> {
-        const filename = this.plugin.noteController.getNoteFilename(date, noteType);
+        const filename = this.plugin.noteController.getExistingNoteFilename(date, noteType);
         await this.executeStaticByFilename(filename);
     }
 
