@@ -1,6 +1,7 @@
 import {MouseEvent, useContext} from "react";
 import {DateTime} from "luxon";
 import {HolidayUtil} from "lunar-typescript";
+import {ChineseHolidayUtil} from "../../utils/ChineseHolidayUtil";
 import {useAppDispatch, useAppSelector} from "../redux/hooks";
 import {selectSelectedItem, updateSelectedItem} from "../redux/selectedItemSlice";
 import SelectedItem from "../../entity/SelectedItem";
@@ -51,34 +52,42 @@ function DayItemSuperscript({
                                 isSelected
                             }: { targetDate: DateTime, dayListOfMonthView: DayListOfMonthView, isSelected: boolean }) {
 
-    let holiday = HolidayUtil.getHoliday(targetDate.year, targetDate.month, targetDate.day);
-    if (holiday === null) {
+    let text = "";
+    let isWork = false;
+
+    // 优先使用自定义的中国调休数据
+    let chineseHoliday = ChineseHolidayUtil.getHoliday(targetDate.year, targetDate.month, targetDate.day);
+    if (chineseHoliday) {
+        text = chineseHoliday.isWork ? "班" : "休";
+        isWork = chineseHoliday.isWork;
+    } else {
+        // 回退到 lunar-typescript 的数据
+        let holiday = HolidayUtil.getHoliday(targetDate.year, targetDate.month, targetDate.day);
+        if (holiday) {
+            text = holiday.isWork() ? "班" : "休";
+            isWork = holiday.isWork();
+        }
+    }
+
+    if (text === "") {
         return <></>;
     }
 
 
     let style = "d-script-font";
-    let text: string;
     if (targetDate.month !== dayListOfMonthView.month) {
         style = style.concat(" month-view-other-month");
     }
 
     if (isSelected) {
-        if (holiday.isWork()) {
-            text = "班";
-        }
-        else {
-            text = "休";
-        }
+        // 选中状态下使用默认字体颜色（反白）
     }
     else {
-        if (holiday.isWork()) {
+        if (isWork) {
             style = style.concat(" month-view-work");
-            text = "班";
         }
         else {
             style = style.concat(" month-view-rest");
-            text = "休";
         }
     }
 
@@ -210,7 +219,7 @@ function MonthViewRow({
 
 function MonthViewHeader() {
     return <div className='month-view-header'>
-        <div className="month-view-header-item">周</div>
+        <div className="month-view-header-item month-view-week-header">W</div>
         <div className="month-view-header-item">一</div>
         <div className="month-view-header-item">二</div>
         <div className="month-view-header-item">三</div>

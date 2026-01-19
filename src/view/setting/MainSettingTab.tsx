@@ -1,4 +1,4 @@
-import {PluginSettingTab, Setting} from "obsidian";
+import {PluginSettingTab, Setting, Notice, requestUrl} from "obsidian";
 import {createRoot, Root} from "react-dom/client";
 import {FontSizeChangeMode, NoteType, TemplatePlugin} from "../../base/enum";
 import DustCalendarPlugin from "../../main";
@@ -11,6 +11,7 @@ import NotePattern from "./NotePattern";
 import DotUpperLimitSelect from "./DotUpperLimitSelect";
 import TodoAnnotationModeSelect from "./TodoAnnotationModeSelect";
 import WordsPerDotInput from "./WordsPerDotInput";
+import {ChineseHolidayUtil} from "../../utils/ChineseHolidayUtil";
 
 
 export default class MainSettingTab extends PluginSettingTab {
@@ -61,6 +62,7 @@ export default class MainSettingTab extends PluginSettingTab {
         containerEl.empty();
         this.displayShouldDisplayLunarInfoToggle();
         this.displayShouldDisplayHolidayInfo();
+        this.displayHolidayDataSourceSetting(); // 新增调休数据源设置
         this.displayFontSizeChangeModeSelect();
         this.displayImmutableFontSizeSlider();
         this.displayQuarterNameModeSelect();
@@ -82,6 +84,56 @@ export default class MainSettingTab extends PluginSettingTab {
         this.plugin.calendarViewController.forceFlush();
         // this.plugin.flushCalendarView();
         return super.hide();
+    }
+
+    private displayHolidayDataSourceSetting(): void {
+        const {containerEl} = this;
+        
+        let urlSetting = new Setting(containerEl);
+        urlSetting.setName("调休数据源 URL")
+            .setDesc("输入调休数据的 JSON URL。如果为空，将使用内置数据。")
+            .addText(text => text
+                .setPlaceholder("https://example.com/holidays.json")
+                .setValue(this.plugin.database.setting.holidayDataSourceUrl)
+                .onChange(async (value) => {
+                    this.plugin.database.setting.holidayDataSourceUrl = value;
+                }));
+
+        let updateBtn = new Setting(containerEl);
+        updateBtn.setName("更新调休信息")
+            .setDesc("从上方配置的 URL 更新调休数据。")
+            .addButton(button => button
+                .setButtonText("立即更新")
+                .onClick(async () => {
+                    const url = this.plugin.database.setting.holidayDataSourceUrl;
+                    if (!url) {
+                        new Notice("请先配置调休数据源 URL");
+                        return;
+                    }
+
+                    try {
+                        new Notice("开始更新调休数据...");
+                        const response = await requestUrl({url: url});
+                        if (response.status === 200) {
+                            const data = response.json;
+                            // 简单的验证
+                            if (typeof data === 'object') {
+                                this.plugin.database.setting.holidayData = data;
+                                await this.plugin.database.saveSetting();
+                                ChineseHolidayUtil.setHolidayData(data);
+                                this.plugin.calendarViewController.forceFlush();
+                                new Notice("调休数据更新成功！");
+                            } else {
+                                new Notice("数据格式错误，请检查 JSON 格式");
+                            }
+                        } else {
+                            new Notice(`更新失败，状态码: ${response.status}`);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        new Notice(`更新出错: ${(e as any).message}`);
+                    }
+                }));
     }
 
     private displayFontSizeChangeModeSelect(): void {
@@ -213,6 +265,15 @@ export default class MainSettingTab extends PluginSettingTab {
         notePatternRoot.render(
             <NotePattern plugin={this.plugin} noteType={noteType}/>
         );
+
+        let noteFolderElement = new Setting(containerEl);
+        noteFolderElement.setName("日历读取文件夹").setDesc("仅用于在日历中查找已有笔记，支持子文件夹。留空表示与创建路径一致。");
+        noteFolderElement.addText(text => {
+            text.setValue(this.plugin.noteController.getNoteSearchFolder(noteType));
+            text.onChange(async (value) => {
+                this.plugin.noteController.setNoteSearchFolder(noteType, value);
+            });
+        });
 
         // 是否选择了模板插件
         if (this.plugin.templateController.getTemplatePlugin() === TemplatePlugin.NONE) {
